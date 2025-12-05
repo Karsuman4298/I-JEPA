@@ -1,7 +1,6 @@
 import torch
 from einops import rearrange
 
-from ViT22B_Block import ViT_22B_Block
 from ViTBlock import ViTBlock
 
 class TargetEncoder(torch.nn.Module):
