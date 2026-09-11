@@ -9,6 +9,9 @@ EPOCHS="${EPOCHS:-100}"
 BATCH_SIZE="${BATCH_SIZE:-32}"
 NUM_WORKERS="${NUM_WORKERS:-8}"
 SEED="${SEED:-42}"
+KNN_EVERY="${KNN_EVERY:-1}"
+KNN_JOBS="${KNN_JOBS:-1}"
+RESUME="${RESUME:-1}"
 
 for required_file in HSI_Tr.mat TrLabel.mat HSI_Te.mat TeLabel.mat; do
   if [[ ! -f "${DATA_DIR}/${required_file}" ]]; then
@@ -27,8 +30,11 @@ python3 train_houston.py \
   --epochs "${EPOCHS}" \
   --batch-size "${BATCH_SIZE}" \
   --num-workers "${NUM_WORKERS}" \
+  --knn-every "${KNN_EVERY}" \
+  --knn-jobs "${KNN_JOBS}" \
   --seed "${SEED}" \
-  --output-dir "${OUTPUT_DIR}"
+  --output-dir "${OUTPUT_DIR}" \
+  "$([[ "${RESUME}" == "0" ]] && printf '%s' "--no-resume" || printf '%s' "--resume")"
 
 echo "Results written to ${OUTPUT_DIR}/"
 printf '%s\n' \

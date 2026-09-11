@@ -66,10 +66,19 @@ chmod +x run_houston18.sh
 On a server, optional environment variables can control the run:
 
 ```
-EPOCHS=100 BATCH_SIZE=32 NUM_WORKERS=8 SEED=42 ./run_houston18.sh Houston2018 Results/Houston2018
+EPOCHS=100 BATCH_SIZE=32 NUM_WORKERS=8 SEED=42 KNN_EVERY=1 KNN_JOBS=1 ./run_houston18.sh Houston2018 Results/Houston2018
 ```
 
-The script installs `requirements-houston.txt`, trains both models with the same split and seed, and writes:
+The script installs `requirements-houston.txt`, trains both models with the same split and seed, and writes progress after every epoch. Resume is enabled by default, so rerunning the same command continues from:
+
+```
+Results/Houston2018/i_jepa_last.pt
+Results/Houston2018/band_i_jepa_last.pt
+```
+
+Set `RESUME=0` to ignore existing checkpoints and start over. If the full brute-force kNN probe is too slow for a server time limit, increase `KNN_EVERY` to evaluate every N epochs while still evaluating the final epoch. Increase `KNN_JOBS` only when the job has enough CPU allocated for sklearn's brute-force kNN step.
+
+The final run writes:
 
 ```
 Results/Houston2018/score_table.csv
