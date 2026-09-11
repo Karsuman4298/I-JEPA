@@ -1,5 +1,7 @@
-# I-JEPA - MiniImageNet - ViT-Tiny Implementation
-This repository implements I-JEPA from ["Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture"](https://arxiv.org/abs/2301.08243). It contains the core I-JEPA training loop with a ViT-Tiny backbone trained on MiniImageNet (100 classes, 600 images per class). The training schedule closely follows that of the paper, with warmup epochs, a linearly increasing weight decay and EMA momentum, as well as a cosine decay schedule for the learning rate after warmup. The initial learning rate and the number of epochs are adjusted to account for the much smaller architecture and dataset size.
+# I-JEPA and Band-I-JEPA
+This repository implements I-JEPA from ["Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture"](https://arxiv.org/abs/2301.08243) and a hyperspectral Band-I-JEPA variant. The Houston runner trains both models with the same data, masking, optimizer, seed, and kNN probe so their representations can be compared fairly.
+
+The baseline disables spectral and spatial Fourier gating. Band-I-JEPA enables both gates: a learnable 1-D band-axis filter before patch projection and a learnable 2-D spatial-frequency filter inside the encoder.
 
 -----------
 ## What is I-JEPA?
@@ -43,6 +45,41 @@ Training can be started by simply executing the main file. All training related 
 ```
 python main.py
 ```
+
+## Houston 2013/2018 comparison
+
+Houston18 in this workspace contains:
+
+- `Houston18.mat`: HDF5 MATLAB file with `ori_data`, shape `48 x 954 x 210`.
+- `Houston18_7gt.mat`: HDF5 MATLAB file with `map`, shape `954 x 210`, containing 7 classes and background label 0.
+- `Houston18_Tr.mat` and `Houston18_Te_gt.mat`: pre-extracted training patches and test labels without matching train coordinates. They are not used because the train labels cannot be aligned safely to `Houston18_Tr`.
+
+The experiment uses the full cube and class map, then creates a deterministic stratified split with 20% train and 80% test pixels. With seed 42 this produces 10,637 training samples and 42,563 test samples, matching the supplied Houston18 split counts.
+
+Install the dependencies and run the comparison:
+
+```
+chmod +x run_houston18.sh
+./run_houston18.sh
+```
+
+On a server, optional environment variables can control the run:
+
+```
+EPOCHS=100 BATCH_SIZE=32 NUM_WORKERS=8 SEED=42 ./run_houston18.sh Houston2018 Results/Houston2018
+```
+
+The script installs `requirements-houston.txt`, trains both models with the same split and seed, and writes:
+
+```
+Results/Houston2018/score_table.csv
+Results/Houston2018/score_table.json
+Results/Houston2018/training_history.csv
+Results/Houston2018/training_loss.png
+Results/Houston2018/knn_accuracy.png
+```
+
+`score_table.csv` reports final kNN accuracy, balanced accuracy, macro-F1, best kNN accuracy, and the best epoch for each model. `training_history.csv` contains training MSE and kNN accuracy for every epoch. The higher kNN accuracy is the better representation for this split. Band-I-JEPA may help when spectral signatures and spatial texture are discriminative; the baseline can still win if the Fourier gates overfit or the training budget is too small. For a stronger conclusion, repeat with at least three seeds.
 -------------------
 ## Key hyperparameters:
 ```

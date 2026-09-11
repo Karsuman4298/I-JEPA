@@ -15,7 +15,7 @@ class IJepa(torch.nn.Module):
         super().__init__()
 
         
-        self.M = 4 # Hyperparameter: How many target blocks to sample. In the paper M = 4
+        self.M = 4 # Hyperparameter: How many target blocks to sample. In the paper M = 4(M=Target Block)
         
         # ViT architecture - this are the values of DeiT-Tiny
         self.block_count = 12

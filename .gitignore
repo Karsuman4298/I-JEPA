@@ -1,0 +1,6 @@
+# Local datasets and training artifacts
+.DS_Store
+Houston2018/
+Results/Houston2018/
+*.pt
+*.pth
