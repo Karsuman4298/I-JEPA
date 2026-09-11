@@ -1,33 +1,29 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────────
-# run_houston_compare.sh
+# ───────────────────────────────────────────────────────────────────────────────
+# File: IJEPA/I-JEPA/improver_bijepa_vs_ijepa.sh
 #
-# Trains BOTH models on Houston 2018 and writes results side-by-side:
-#   1. Normal I-JEPA        → train_houston.py
-#   2. Improved Band-I-JEPA → train_band-i-jepa.py
+# Sequential Training & Benchmark Script:
+#   1. Standard I-JEPA          -> train_houston.py
+#   2. Improved Band-I-JEPA     -> train_band-i-jepa.py
 #
 # Usage:
-#   ./run_houston_compare.sh [DATA_DIR] [OUTPUT_BASE]
+#   chmod +x improver_bijepa_vs_ijepa.sh
+#   ./improver_bijepa_vs_ijepa.sh [DATA_DIR] [OUTPUT_BASE_DIR]
 #
-# Examples:
-#   ./run_houston_compare.sh
-#   ./run_houston_compare.sh /scratch/skaushik8/HSI_Hashing/Houston18
-#   ./run_houston_compare.sh /data/Houston18 Results/Houston2018
-#
-# Environment overrides (all optional):
-#   EPOCHS, BATCH_SIZE, NUM_WORKERS, SEED, KNN_EVERY,
-#   KNN_JOBS, RESUME, NUM_CLASSES, DEVICE
-# ─────────────────────────────────────────────────────────────────────
+# Example:
+#   ./improver_bijepa_vs_ijepa.sh /scratch/skaushik8/HSI_Hashing/Houston18 Results/Houston2018_Comparison
+# ───────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-# ── Resolve paths ──
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# ── Ensure execution from the script's directory ──
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
+# ── Argument Handling & Defaults ──
 DATA_DIR="${1:-/scratch/skaushik8/HSI_Hashing/Houston18}"
-OUTPUT_BASE="${2:-Results/Houston2018}"
+OUTPUT_BASE="${2:-Results/Houston2018_Comparison}"
 
-# ── Hyperparameter defaults (override via env vars) ──
+# ── Configurable Environment Overrides ──
 EPOCHS="${EPOCHS:-100}"
 BATCH_SIZE="${BATCH_SIZE:-32}"
 NUM_WORKERS="${NUM_WORKERS:-8}"
@@ -35,85 +31,86 @@ SEED="${SEED:-42}"
 KNN_EVERY="${KNN_EVERY:-1}"
 KNN_JOBS="${KNN_JOBS:--1}"
 RESUME="${RESUME:-1}"
-NUM_CLASSES="${NUM_CLASSES:-20}"
 DEVICE="${DEVICE:-cuda}"
+NUM_CLASSES="${NUM_CLASSES:-20}"
 
-# ── Derived paths ──
+# ── Training Script Paths ──
+NORMAL_IJEPA_SCRIPT="${SCRIPT_DIR}/train_houston.py"
+
+# Handle possible space or dash in filename (e.g., 'train_band- i-jepa.py' vs 'train_band-i-jepa.py')
+if [[ -f "${SCRIPT_DIR}/train_band- i-jepa.py" ]]; then
+  IMPROVED_BIJEPA_SCRIPT="${SCRIPT_DIR}/train_band- i-jepa.py"
+elif [[ -f "${SCRIPT_DIR}/train_band-i-jepa.py" ]]; then
+  IMPROVED_BIJEPA_SCRIPT="${SCRIPT_DIR}/train_band-i-jepa.py"
+else
+  IMPROVED_BIJEPA_SCRIPT="${SCRIPT_DIR}/train_band_i_jepa.py"
+fi
+
 OUTPUT_IJEPA="${OUTPUT_BASE}/I-JEPA"
-OUTPUT_BAND_IJEPA="${OUTPUT_BASE}/Band-I-JEPA-Improved"
+OUTPUT_BIJEPA="${OUTPUT_BASE}/Band-I-JEPA-Improved"
 
-TRAIN_SCRIPT="${SCRIPT_DIR}/train_houston.py"
-BAND_TRAIN_SCRIPT="${SCRIPT_DIR}/train_band-i-jepa.py"
-
-# ── Resume flag ──
+# ── Resume switch ──
 if [[ "${RESUME}" == "0" ]]; then
   RESUME_FLAG="--no-resume"
 else
   RESUME_FLAG="--resume"
 fi
 
-# ─────────────────────────────────────────────────────────────────────
-# 1. VALIDATE DATA
-# ─────────────────────────────────────────────────────────────────────
-echo "═══════════════════════════════════════════════════════════"
-echo "  Houston 2018 — I-JEPA vs Improved Band-I-JEPA"
-echo "═══════════════════════════════════════════════════════════"
-echo ""
-echo "Data directory : ${DATA_DIR}"
-echo "Output base    : ${OUTPUT_BASE}"
-echo "Epochs         : ${EPOCHS}"
-echo "Batch size     : ${BATCH_SIZE}"
-echo "Device         : ${DEVICE}"
-echo "Seed           : ${SEED}"
-echo "Num classes    : ${NUM_CLASSES}"
+echo "========================================================================"
+echo "          Houston 2018: Standard I-JEPA vs Improved Band-I-JEPA         "
+echo "========================================================================"
+echo " Data Directory     : ${DATA_DIR}"
+echo " Base Output Dir    : ${OUTPUT_BASE}"
+echo " Total Epochs       : ${EPOCHS}"
+echo " Batch Size         : ${BATCH_SIZE}"
+echo " Workers            : ${NUM_WORKERS}"
+echo " Device             : ${DEVICE}"
+echo " Random Seed        : ${SEED}"
+echo " Class Count        : ${NUM_CLASSES}"
+echo " Standard Script    : ${NORMAL_IJEPA_SCRIPT}"
+echo " Improved Script    : ${IMPROVED_BIJEPA_SCRIPT}"
+echo "========================================================================"
 echo ""
 
-for required_file in HSI_Tr.mat TrLabel.mat HSI_Te.mat TeLabel.mat; do
-  if [[ ! -f "${DATA_DIR}/${required_file}" ]]; then
-    echo "ERROR: Missing Houston18 file: ${DATA_DIR}/${required_file}" >&2
+# ── 1. Check Data Files ──
+for file in HSI_Tr.mat TrLabel.mat HSI_Te.mat TeLabel.mat; do
+  if [[ ! -f "${DATA_DIR}/${file}" ]]; then
+    echo "[-] Error: Required data file missing: ${DATA_DIR}/${file}" >&2
     exit 1
   fi
 done
-echo "✓ All data files found."
-echo ""
+echo "[+] All required dataset files verified."
 
-# ─────────────────────────────────────────────────────────────────────
-# 2. VALIDATE TRAINING SCRIPTS
-# ─────────────────────────────────────────────────────────────────────
-if [[ ! -f "${TRAIN_SCRIPT}" ]]; then
-  echo "ERROR: Normal I-JEPA script not found: ${TRAIN_SCRIPT}" >&2
+# ── 2. Check Python Scripts ──
+if [[ ! -f "${NORMAL_IJEPA_SCRIPT}" ]]; then
+  echo "[-] Error: Standard I-JEPA script not found at ${NORMAL_IJEPA_SCRIPT}" >&2
   exit 1
 fi
 
-if [[ ! -f "${BAND_TRAIN_SCRIPT}" ]]; then
-  echo "ERROR: Improved Band-I-JEPA script not found: ${BAND_TRAIN_SCRIPT}" >&2
+if [[ ! -f "${IMPROVED_BIJEPA_SCRIPT}" ]]; then
+  echo "[-] Error: Improved Band-I-JEPA script not found at ${IMPROVED_BIJEPA_SCRIPT}" >&2
   exit 1
 fi
-echo "✓ Both training scripts found."
-echo ""
+echo "[+] Training scripts verified."
 
-# ─────────────────────────────────────────────────────────────────────
-# 3. INSTALL DEPENDENCIES
-# ─────────────────────────────────────────────────────────────────────
-if [[ -f "requirements-houston.txt" ]]; then
-  echo "Installing dependencies from requirements-houston.txt ..."
-  python3 -m pip install -q -r requirements-houston.txt
-  echo "✓ Dependencies installed."
-  echo ""
+# ── 3. Install Dependencies (if requirements file exists) ──
+if [[ -f "${SCRIPT_DIR}/requirements-houston.txt" ]]; then
+  echo "[*] Verifying/installing dependencies from requirements-houston.txt..."
+  python3 -m pip install -q -r "${SCRIPT_DIR}/requirements-houston.txt"
 fi
 
-# ── Create output directories ──
-mkdir -p "${OUTPUT_IJEPA}" "${OUTPUT_BAND_IJEPA}"
+mkdir -p "${OUTPUT_IJEPA}" "${OUTPUT_BIJEPA}"
 
-# ─────────────────────────────────────────────────────────────────────
-# 4. TRAIN NORMAL I-JEPA
-# ─────────────────────────────────────────────────────────────────────
-echo "═══════════════════════════════════════════════════════════"
-echo "  [1/2] Training Normal I-JEPA"
-echo "═══════════════════════════════════════════════════════════"
+# ───────────────────────────────────────────────────────────────────────────────
+# STEP 1: Train Standard I-JEPA
+# ───────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "========================================================================"
+echo "  [1/2] Running Standard I-JEPA"
+echo "========================================================================"
 echo ""
 
-python3 "${TRAIN_SCRIPT}" \
+python3 "${NORMAL_IJEPA_SCRIPT}" \
   --train-image "${DATA_DIR}/HSI_Tr.mat" \
   --train-label "${DATA_DIR}/TrLabel.mat" \
   --test-image  "${DATA_DIR}/HSI_Te.mat" \
@@ -128,98 +125,89 @@ python3 "${TRAIN_SCRIPT}" \
   --output-dir  "${OUTPUT_IJEPA}" \
   ${RESUME_FLAG}
 
+echo "[+] Standard I-JEPA completed successfully."
+
+# ───────────────────────────────────────────────────────────────────────────────
+# STEP 2: Train Improved Band-I-JEPA
+# ───────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "✓ Normal I-JEPA training complete."
+echo "========================================================================"
+echo "  [2/2] Running Improved Band-I-JEPA"
+echo "========================================================================"
 echo ""
 
-# ─────────────────────────────────────────────────────────────────────
-# 5. TRAIN IMPROVED BAND-I-JEPA
-# ─────────────────────────────────────────────────────────────────────
-echo "═══════════════════════════════════════════════════════════"
-echo "  [2/2] Training Improved Band-I-JEPA"
-echo "═══════════════════════════════════════════════════════════"
-echo ""
-
-python3 "${BAND_TRAIN_SCRIPT}" \
-  --train-image  "${DATA_DIR}/HSI_Tr.mat" \
-  --train-label  "${DATA_DIR}/TrLabel.mat" \
-  --test-image   "${DATA_DIR}/HSI_Te.mat" \
-  --test-label   "${DATA_DIR}/TeLabel.mat" \
-  --epochs       "${EPOCHS}" \
-  --batch-size   "${BATCH_SIZE}" \
-  --num-workers  "${NUM_WORKERS}" \
-  --knn-every    "${KNN_EVERY}" \
-  --knn-jobs     "${KNN_JOBS}" \
-  --seed         "${SEED}" \
-  --device       "${DEVICE}" \
-  --num-classes  "${NUM_CLASSES}" \
-  --output-dir   "${OUTPUT_BAND_IJEPA}" \
+python3 "${IMPROVED_BIJEPA_SCRIPT}" \
+  --train-image "${DATA_DIR}/HSI_Tr.mat" \
+  --train-label "${DATA_DIR}/TrLabel.mat" \
+  --test-image  "${DATA_DIR}/HSI_Te.mat" \
+  --test-label  "${DATA_DIR}/TeLabel.mat" \
+  --epochs      "${EPOCHS}" \
+  --batch-size  "${BATCH_SIZE}" \
+  --num-workers "${NUM_WORKERS}" \
+  --knn-every   "${KNN_EVERY}" \
+  --knn-jobs    "${KNN_JOBS}" \
+  --seed        "${SEED}" \
+  --device      "${DEVICE}" \
+  --num-classes "${NUM_CLASSES}" \
+  --output-dir  "${OUTPUT_BIJEPA}" \
   ${RESUME_FLAG}
 
+echo "[+] Improved Band-I-JEPA completed successfully."
+
+# ───────────────────────────────────────────────────────────────────────────────
+# STEP 3: Summary and Comparison
+# ───────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "✓ Improved Band-I-JEPA training complete."
+echo "========================================================================"
+echo "                         FINAL EVALUATION SUMMARY                       "
+echo "========================================================================"
 echo ""
 
-# ─────────────────────────────────────────────────────────────────────
-# 6. SUMMARY
-# ─────────────────────────────────────────────────────────────────────
-echo "═══════════════════════════════════════════════════════════"
-echo "  ALL DONE — Results Summary"
-echo "═══════════════════════════════════════════════════════════"
-echo ""
-
-print_results() {
-  local label="$1"
-  local dir="$2"
-
-  echo "  ${label}:"
-  echo "    Directory : ${dir}/"
-
-  for f in score_table.csv score_table.json training_history.csv \
-           training_loss.png knn_accuracy.png \
-           balanced_accuracy.png macro_f1.png composite_score.png; do
-    if [[ -f "${dir}/${f}" ]]; then
-      echo "    ✓ ${f}"
-    fi
-  done
-  echo ""
-}
-
-print_results "Normal I-JEPA"          "${OUTPUT_IJEPA}"
-print_results "Improved Band-I-JEPA"   "${OUTPUT_BAND_IJEPA}"
-
-# ── Quick numeric comparison if both JSON files exist ──
 IJEPA_JSON="${OUTPUT_IJEPA}/score_table.json"
-BAND_JSON="${OUTPUT_BAND_IJEPA}/score_table.json"
+BIJEPA_JSON="${OUTPUT_BIJEPA}/score_table.json"
 
-if [[ -f "${IJEPA_JSON}" && -f "${BAND_JSON}" ]]; then
-  echo "  ── Quick Comparison (last epoch) ──"
-  echo ""
+if [[ -f "${IJEPA_JSON}" && -f "${BIJEPA_JSON}" ]]; then
   python3 -c "
-import json, sys
+import json
 
-def load_last(path):
-    with open(path) as f:
+def read_json(path):
+    with open(path, 'r') as f:
         data = json.load(f)
-    if isinstance(data, list) and len(data) > 0:
-        return data[-1]
-    return data
+    return data[-1] if isinstance(data, list) else data
 
-ij = load_last('${IJEPA_JSON}')
-bj = load_last('${BAND_JSON}')
+try:
+    ij = read_json('${IJEPA_JSON}')
+    bj = read_json('${BIJEPA_JSON}')
 
-metrics = ['knn_accuracy', 'balanced_accuracy', 'macro_f1']
-header = f\"{'Metric':<22} {'I-JEPA':>10} {'Band-I-JEPA':>14} {'Delta':>8}\"
-print(f'  {header}')
-print(f'  {\"─\" * len(header)}')
-for m in metrics:
-    iv = ij.get(m, float('nan'))
-    bv = bj.get(m, float('nan'))
-    delta = bv - iv
-    sign = '+' if delta >= 0 else ''
-    print(f'  {m:<22} {iv*100:>9.2f}% {bv*100:>13.2f}% {sign}{delta*100:>6.2f}%')
-print()
-" 2>/dev/null || echo "  (Could not parse JSON for comparison.)"
+    metrics = [
+        ('knn_accuracy', 'kNN Accuracy'),
+        ('balanced_accuracy', 'Balanced Acc'),
+        ('macro_f1', 'Macro F1'),
+        ('train_loss', 'Train Loss')
+    ]
+
+    print(f'  {\"Metric\":<20} | {\"Standard I-JEPA\":>16} | {\"Improved BI-JEPA\":>18} | {\"Delta\":>10}')
+    print('  ' + '-' * 72)
+
+    for key, label in metrics:
+        v_ij = ij.get(key, float('nan'))
+        v_bj = bj.get(key, float('nan'))
+
+        if 'loss' in key:
+            delta = v_bj - v_ij
+            sign = '+' if delta > 0 else ''
+            print(f'  {label:<20} | {v_ij:>16.6f} | {v_bj:>18.6f} | {sign}{delta:>9.6f}')
+        else:
+            delta = (v_bj - v_ij) * 100
+            sign = '+' if delta > 0 else ''
+            print(f'  {label:<20} | {v_ij*100:>15.2f}% | {v_bj*100:>17.2f}% | {sign}{delta:>9.2f}%')
+    print()
+except Exception as e:
+    print(f'  [!] Notice: Could not compute final table automatically ({e})')
+"
 fi
 
-echo "═══════════════════════════════════════════════════════════"
+echo "Results saved to:"
+echo "  Standard I-JEPA       -> ${OUTPUT_IJEPA}/"
+echo "  Improved Band-I-JEPA  -> ${OUTPUT_BIJEPA}/"
+echo "========================================================================"
