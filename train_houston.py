@@ -50,7 +50,7 @@ def train_epoch(model, loader, optimizer, device, patch_size):
     model.train()
     total_loss = 0.0
     total_count = 0
-    grid_size = 224 // patch_size
+    grid_size = loader.dataset[0][0].shape[-1] // patch_size
     for windows, _ in loader:
         tokens = to_tokens(windows.to(device, non_blocking=True), patch_size)
         context_mask, target_mask = target_block(grid_size, device)
@@ -103,8 +103,8 @@ def run_variant(name, args, train_dataset, test_dataset, device, use_gates):
         train_dataset, test_dataset, args.batch_size, args.num_workers, args.seed
     )
     module = load_band_module()
-    num_bands = train_dataset.cube.shape[0]
-    grid_size = args.window_size // args.patch_size
+    num_bands = train_dataset.num_bands
+    grid_size = train_dataset.patches.shape[-1] // args.patch_size
     model = module.HSIIJEPA(
         patch_size=args.patch_size, num_bands=num_bands, embed_dim=args.embed_dim,
         num_heads=args.num_heads, enc_depth=args.depth, pred_depth=args.depth,
@@ -181,12 +181,15 @@ def make_plots(history, output_dir):
 def main():
     default_data_dir = Path(os.environ.get("HOUSTON18_DIR", "Houston2018"))
     parser = argparse.ArgumentParser(description="Compare I-JEPA and Band-I-JEPA on Houston18")
-    parser.add_argument("--image", type=Path, default=default_data_dir / "Houston18.mat")
-    parser.add_argument("--labels", type=Path, default=default_data_dir / "Houston18_7gt.mat")
-    parser.add_argument("--image-key", default="ori_data")
-    parser.add_argument("--label-key", default="map")
-    parser.add_argument("--window-size", type=int, default=224)
-    parser.add_argument("--patch-size", type=int, default=16)
+    parser.add_argument("--train-image", type=Path, default=default_data_dir / "HSI_Tr.mat")
+    parser.add_argument("--train-label", type=Path, default=default_data_dir / "TrLabel.mat")
+    parser.add_argument("--test-image", type=Path, default=default_data_dir / "HSI_Te.mat")
+    parser.add_argument("--test-label", type=Path, default=default_data_dir / "TeLabel.mat")
+    parser.add_argument("--train-image-key")
+    parser.add_argument("--train-label-key")
+    parser.add_argument("--test-image-key")
+    parser.add_argument("--test-label-key")
+    parser.add_argument("--patch-size", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=100)
@@ -201,14 +204,12 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=Path("Results/Houston2018"))
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
-    if args.window_size % args.patch_size or args.window_size != 224:
-        raise ValueError("window-size must currently be 224 and divisible by patch-size")
     set_seed(args.seed)
-    train_dataset, test_dataset, labels = HoustonLoader.make_split_datasets(
-        args.image, args.labels, args.image_key, args.label_key,
-        args.window_size, args.train_fraction, args.seed,
+    train_dataset, test_dataset = HoustonLoader.make_precomputed_datasets(
+        args.train_image, args.train_label, args.test_image, args.test_label,
+        args.train_image_key, args.train_label_key,
+        args.test_image_key, args.test_label_key,
     )
-    print("Houston18 cube labels:", dict(zip(*np.unique(labels[labels > 0], return_counts=True))))
     print("Train samples:", len(train_dataset), "Test samples:", len(test_dataset))
     device = torch.device(args.device if args.device == "cpu" or torch.cuda.is_available() else "cpu")
     history = []

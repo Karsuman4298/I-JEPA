@@ -105,3 +105,53 @@ def make_loaders(train_dataset, test_dataset, batch_size=16, num_workers=0, seed
         DataLoader(train_dataset, shuffle=True, generator=generator, **options),
         DataLoader(test_dataset, shuffle=False, **options),
     )
+
+
+class HoustonPrecomputedDataset(Dataset):
+    def __init__(self, patches, labels):
+        self.patches = torch.from_numpy(patches).permute(0, 3, 1, 2).contiguous()
+        self.labels = torch.from_numpy(labels.astype(np.int64))
+        self.num_bands = self.patches.shape[1]
+
+    def __len__(self):
+        return self.patches.shape[0]
+
+    def __getitem__(self, index):
+        return self.patches[index], self.labels[index]
+
+
+def load_houston_patches(image_path, label_path, image_key=None, label_key=None):
+    patches = np.asarray(_load_mat_array(image_path, image_key), dtype=np.float32)
+    labels = np.asarray(_load_mat_array(label_path, label_key)).squeeze()
+    if labels.ndim != 1:
+        labels = labels.reshape(-1)
+    if patches.ndim != 4:
+        raise ValueError(f"Expected 4-D patch data, got {patches.shape}")
+    sample_axes = [axis for axis, size in enumerate(patches.shape) if size == len(labels)]
+    if len(sample_axes) != 1:
+        raise ValueError(f"Could not identify sample axis in patches {patches.shape} for {len(labels)} labels")
+    patches = np.moveaxis(patches, sample_axes[0], 0)
+    band_axis = 1 + int(np.argmax(patches.shape[1:]))
+    patches = np.moveaxis(patches, band_axis, -1)
+    if patches.shape[1] != patches.shape[2]:
+        raise ValueError(f"Expected square spatial patches, got {patches.shape}")
+    flat = patches.reshape(-1, patches.shape[-1])
+    patches = (patches - flat.mean(axis=0)) / np.maximum(flat.std(axis=0), 1e-6)
+    labels = labels.astype(np.int64)
+    if labels.min() == 1:
+        labels = labels - 1
+    return patches.astype(np.float32), labels
+
+
+def make_precomputed_datasets(train_image, train_label, test_image, test_label,
+                              train_image_key=None, train_label_key=None,
+                              test_image_key=None, test_label_key=None):
+    train_patches, train_labels = load_houston_patches(
+        train_image, train_label, train_image_key, train_label_key
+    )
+    test_patches, test_labels = load_houston_patches(
+        test_image, test_label, test_image_key, test_label_key
+    )
+    if train_patches.shape[1:] != test_patches.shape[1:]:
+        raise ValueError(f"Train/test patch shapes differ: {train_patches.shape} and {test_patches.shape}")
+    return HoustonPrecomputedDataset(train_patches, train_labels), HoustonPrecomputedDataset(test_patches, test_labels)

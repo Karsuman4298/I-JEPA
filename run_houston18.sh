@@ -3,20 +3,27 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-DATA_DIR="${1:-/scratch/skaushik8/HSI_Hashing/}"
+DATA_DIR="${1:-/scratch/skaushik8/HSI_Hashing/Houston18}"
 OUTPUT_DIR="${2:-Results/Houston2018}"
 EPOCHS="${EPOCHS:-100}"
 BATCH_SIZE="${BATCH_SIZE:-32}"
 NUM_WORKERS="${NUM_WORKERS:-8}"
 SEED="${SEED:-42}"
 
+for required_file in HSI_Tr.mat TrLabel.mat HSI_Te.mat TeLabel.mat; do
+  if [[ ! -f "${DATA_DIR}/${required_file}" ]]; then
+    echo "Missing Houston18 file: ${DATA_DIR}/${required_file}" >&2
+    exit 1
+  fi
+done
+
 python3 -m pip install -r requirements-houston.txt
 
 python3 train_houston.py \
-  --image "${DATA_DIR}/Houston18.mat" \
-  --labels "${DATA_DIR}/Houston18_7gt.mat" \
-  --image-key ori_data \
-  --label-key map \
+  --train-image "${DATA_DIR}/HSI_Tr.mat" \
+  --train-label "${DATA_DIR}/TrLabel.mat" \
+  --test-image "${DATA_DIR}/HSI_Te.mat" \
+  --test-label "${DATA_DIR}/TeLabel.mat" \
   --epochs "${EPOCHS}" \
   --batch-size "${BATCH_SIZE}" \
   --num-workers "${NUM_WORKERS}" \
