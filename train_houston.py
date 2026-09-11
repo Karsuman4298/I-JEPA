@@ -2,6 +2,7 @@ import argparse
 import csv
 import importlib.util
 import json
+import os
 import random
 from pathlib import Path
 
@@ -178,9 +179,10 @@ def make_plots(history, output_dir):
 
 
 def main():
+    default_data_dir = Path(os.environ.get("HOUSTON18_DIR", "Houston2018"))
     parser = argparse.ArgumentParser(description="Compare I-JEPA and Band-I-JEPA on Houston18")
-    parser.add_argument("--image", type=Path, default=Path("Houston2018/Houston18.mat"))
-    parser.add_argument("--labels", type=Path, default=Path("Houston2018/Houston18_7gt.mat"))
+    parser.add_argument("--image", type=Path, default=default_data_dir / "Houston18.mat")
+    parser.add_argument("--labels", type=Path, default=default_data_dir / "Houston18_7gt.mat")
     parser.add_argument("--image-key", default="ori_data")
     parser.add_argument("--label-key", default="map")
     parser.add_argument("--window-size", type=int, default=224)

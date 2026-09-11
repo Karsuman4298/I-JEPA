@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-DATA_DIR="${1:-/scratch/skaushik8/HSI_Hashing/Houston18}"
+DATA_DIR="${1:-/scratch/skaushik8/HSI_Hashing/}"
 OUTPUT_DIR="${2:-Results/Houston2018}"
 EPOCHS="${EPOCHS:-100}"
 BATCH_SIZE="${BATCH_SIZE:-32}"
